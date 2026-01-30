@@ -241,5 +241,9 @@ export const useCodeGenerator = () => {
     setGeneratedCode("");
   };
 
-  return { generate, isLoading, generatedCode, reset };
+  const updateCode = (newCode: string) => {
+    setGeneratedCode(newCode);
+  };
+
+  return { generate, isLoading, generatedCode, reset, updateCode };
 };
