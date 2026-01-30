@@ -27,7 +27,7 @@ export const GeneratorCard = ({
   examples,
 }: GeneratorCardProps) => {
   const [prompt, setPrompt] = useState("");
-  const { generate, isLoading, generatedCode, reset } = useCodeGenerator();
+  const { generate, isLoading, generatedCode, reset, updateCode } = useCodeGenerator();
 
   const handleGenerate = () => {
     generate(prompt, type);
@@ -40,6 +40,10 @@ export const GeneratorCard = ({
   const handleReset = () => {
     setPrompt("");
     reset();
+  };
+
+  const handleCodeChange = (newCode: string) => {
+    updateCode(newCode);
   };
 
   return (
@@ -105,8 +109,12 @@ export const GeneratorCard = ({
             )}
           </div>
 
-          {/* Code Preview */}
-          <CodePreview code={generatedCode} isLoading={isLoading} />
+          {/* Code Preview with Edit functionality */}
+          <CodePreview 
+            code={generatedCode} 
+            isLoading={isLoading} 
+            onCodeChange={handleCodeChange}
+          />
         </CardContent>
       </Card>
     </motion.div>

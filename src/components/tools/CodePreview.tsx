@@ -1,22 +1,33 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Copy, Check, Code2, Eye } from "lucide-react";
+import { Copy, Check, Code2, Eye, Pencil, RotateCcw, X, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 
 interface CodePreviewProps {
   code: string;
   isLoading?: boolean;
+  onCodeChange?: (newCode: string) => void;
 }
 
-export const CodePreview = ({ code, isLoading }: CodePreviewProps) => {
+export const CodePreview = ({ code, isLoading, onCodeChange }: CodePreviewProps) => {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState("code");
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedCode, setEditedCode] = useState(code);
+
+  // Sync edited code when code prop changes (and not editing)
+  useEffect(() => {
+    if (!isEditing) {
+      setEditedCode(code);
+    }
+  }, [code, isEditing]);
 
   const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(code);
+      await navigator.clipboard.writeText(editedCode || code);
       setCopied(true);
       toast.success("Código copiado!");
       setTimeout(() => setCopied(false), 2000);
@@ -25,11 +36,35 @@ export const CodePreview = ({ code, isLoading }: CodePreviewProps) => {
     }
   };
 
+  const handleStartEdit = () => {
+    setIsEditing(true);
+    setEditedCode(code);
+  };
+
+  const handleSaveEdit = () => {
+    setIsEditing(false);
+    if (onCodeChange) {
+      onCodeChange(editedCode);
+    }
+    toast.success("Código atualizado com sucesso!");
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditedCode(code);
+  };
+
+  const handleResetCode = () => {
+    setEditedCode(code);
+    toast.info("Código restaurado ao original");
+  };
+
   // Extract HTML for preview
   const extractHtml = () => {
-    const htmlMatch = code.match(/```html\n([\s\S]*?)```/);
-    const cssMatch = code.match(/```css\n([\s\S]*?)```/);
-    const svgMatch = code.match(/```svg\n([\s\S]*?)```/) || code.match(/<svg[\s\S]*?<\/svg>/);
+    const displayCode = editedCode || code;
+    const htmlMatch = displayCode.match(/```html\n([\s\S]*?)```/);
+    const cssMatch = displayCode.match(/```css\n([\s\S]*?)```/);
+    const svgMatch = displayCode.match(/```svg\n([\s\S]*?)```/) || displayCode.match(/<svg[\s\S]*?<\/svg>/);
 
     let html = htmlMatch ? htmlMatch[1] : "";
     const css = cssMatch ? cssMatch[1] : "";
@@ -54,6 +89,8 @@ export const CodePreview = ({ code, isLoading }: CodePreviewProps) => {
     );
   }
 
+  const displayCode = editedCode || code;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -73,25 +110,72 @@ export const CodePreview = ({ code, isLoading }: CodePreviewProps) => {
             </TabsTrigger>
           </TabsList>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={copyToClipboard}
-            disabled={!code}
-            className="gap-2"
-          >
-            {copied ? (
+          <div className="flex items-center gap-2">
+            {!isEditing ? (
               <>
-                <Check className="w-4 h-4 text-green-500" />
-                Copiado
+                {onCodeChange && code && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleStartEdit}
+                    className="gap-2"
+                  >
+                    <Pencil className="w-4 h-4" />
+                    Editar
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={copyToClipboard}
+                  disabled={!code}
+                  className="gap-2"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="w-4 h-4 text-green-500" />
+                      Copiado
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      Copiar
+                    </>
+                  )}
+                </Button>
               </>
             ) : (
               <>
-                <Copy className="w-4 h-4" />
-                Copiar
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetCode}
+                  className="gap-2 text-muted-foreground"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Restaurar
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCancelEdit}
+                  className="gap-2"
+                >
+                  <X className="w-4 h-4" />
+                  Cancelar
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleSaveEdit}
+                  className="gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  Salvar
+                </Button>
               </>
             )}
-          </Button>
+          </div>
         </div>
 
         <TabsContent value="code" className="m-0">
@@ -104,15 +188,25 @@ export const CodePreview = ({ code, isLoading }: CodePreviewProps) => {
                 </div>
               </div>
             )}
-            <pre className="p-4 overflow-auto max-h-96 text-sm font-mono text-foreground">
-              <code>{code || " "}</code>
-            </pre>
+            
+            {isEditing ? (
+              <Textarea
+                value={editedCode}
+                onChange={(e) => setEditedCode(e.target.value)}
+                className="min-h-96 font-mono text-sm bg-transparent border-0 rounded-none focus-visible:ring-0 resize-none"
+                placeholder="Edite o código aqui..."
+              />
+            ) : (
+              <pre className="p-4 overflow-auto max-h-96 text-sm font-mono text-foreground">
+                <code>{displayCode || " "}</code>
+              </pre>
+            )}
           </div>
         </TabsContent>
 
         <TabsContent value="preview" className="m-0">
           <div className="p-6 min-h-48 bg-background flex items-center justify-center">
-            {code ? (
+            {displayCode ? (
               <div
                 className="w-full"
                 dangerouslySetInnerHTML={{ __html: extractHtml() }}
