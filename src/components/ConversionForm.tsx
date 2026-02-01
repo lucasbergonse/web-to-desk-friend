@@ -4,7 +4,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { toast } from "sonner";
-import { BuildConfig, BuildStatus } from "./conversion/types";
+import { BuildConfig } from "./conversion/types";
 import { SourceTypeSelector } from "./conversion/SourceTypeSelector";
 import { ZipUploader } from "./conversion/ZipUploader";
 import { GitHubInput } from "./conversion/GitHubInput";
@@ -12,8 +12,11 @@ import { OSSelector } from "./conversion/OSSelector";
 import { FrameworkSelector } from "./conversion/FrameworkSelector";
 import { IconUploader } from "./conversion/IconUploader";
 import { BuildStatusCard } from "./conversion/BuildStatusCard";
+import { useBuild } from "@/hooks/useBuild";
 
 export const ConversionForm = () => {
+  const [buildId, setBuildId] = useState<string | null>(null);
+  const { artifacts, status: buildStatus, startBuild } = useBuild(buildId);
   const [config, setConfig] = useState<BuildConfig>({
     appName: "",
     sourceType: "url",
@@ -23,7 +26,6 @@ export const ConversionForm = () => {
     framework: "electron",
     iconFile: null,
   });
-  const [buildStatus, setBuildStatus] = useState<BuildStatus>("idle");
 
   const updateConfig = <K extends keyof BuildConfig>(key: K, value: BuildConfig[K]) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
@@ -52,23 +54,25 @@ export const ConversionForm = () => {
       return;
     }
 
-    // Start build process simulation
-    if (config.sourceType === "github" || config.sourceType === "zip") {
-      setBuildStatus("extracting");
-      setTimeout(() => setBuildStatus("queued"), 2000);
-    } else {
-      setBuildStatus("queued");
-    }
+    // Start real build process
+    const newBuildId = await startBuild({
+      appName: config.appName,
+      sourceType: config.sourceType,
+      sourceUrl: config.appUrl || undefined,
+      framework: config.framework,
+      targetOs: config.selectedOS
+    });
 
-    setTimeout(() => setBuildStatus("building"), config.sourceType === "url" ? 2000 : 4000);
-    setTimeout(() => {
-      setBuildStatus("completed");
-      toast.success("Build concluído! Seus instaladores estão prontos.");
-    }, config.sourceType === "url" ? 6000 : 8000);
+    if (newBuildId) {
+      setBuildId(newBuildId);
+      toast.success("Build iniciado! Aguarde enquanto geramos seus instaladores.");
+    } else {
+      toast.error("Erro ao iniciar o build. Tente novamente.");
+    }
   };
 
   const handleReset = () => {
-    setBuildStatus("idle");
+    setBuildId(null);
     setConfig({
       appName: "",
       sourceType: "url",
@@ -88,6 +92,7 @@ export const ConversionForm = () => {
         framework={config.framework}
         os={config.selectedOS}
         onReset={handleReset}
+        artifacts={artifacts}
       />
     );
   }
