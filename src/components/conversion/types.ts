@@ -1,7 +1,7 @@
 export type OS = "windows" | "macos" | "linux";
 export type Framework = "electron" | "tauri";
 export type SourceType = "url" | "github" | "zip";
-export type BuildStatus = "idle" | "extracting" | "queued" | "building" | "completed";
+export type BuildStatus = "idle" | "extracting" | "queued" | "building" | "completed" | "failed";
 
 export interface BuildConfig {
   appName: string;

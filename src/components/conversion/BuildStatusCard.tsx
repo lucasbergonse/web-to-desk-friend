@@ -2,7 +2,15 @@ import { motion } from "framer-motion";
 import { Loader2, CheckCircle2, Download, RotateCcw, FileDown, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { BuildStatus, Framework, OS, getDownloadOptions, DownloadOption } from "./types";
+import { BuildStatus, Framework, OS } from "./types";
+
+interface BuildArtifact {
+  id: string;
+  file_type: string;
+  file_name: string;
+  file_size: string;
+  download_url: string | null;
+}
 
 interface BuildStatusCardProps {
   status: BuildStatus;
@@ -10,6 +18,7 @@ interface BuildStatusCardProps {
   framework: Framework;
   os: OS;
   onReset: () => void;
+  artifacts?: BuildArtifact[];
 }
 
 export const BuildStatusCard = ({
@@ -18,9 +27,8 @@ export const BuildStatusCard = ({
   framework,
   os,
   onReset,
+  artifacts = [],
 }: BuildStatusCardProps) => {
-  const downloadOptions = getDownloadOptions(os, framework);
-
   const statusConfig = {
     extracting: {
       title: "Extraindo código...",
@@ -52,6 +60,13 @@ export const BuildStatusCard = ({
       iconClass: "text-green-500",
       progress: 100,
     },
+    failed: {
+      title: "Falha no build",
+      description: "Ocorreu um erro durante o processo de build.",
+      icon: CheckCircle2,
+      iconClass: "text-destructive",
+      progress: 0,
+    },
     idle: {
       title: "",
       description: "",
@@ -63,18 +78,51 @@ export const BuildStatusCard = ({
 
   const config = statusConfig[status];
 
-  const handleDownload = (option: DownloadOption) => {
-    toast.success(`Download iniciado: ${appName}.${option.type}`);
-    // In a real app, this would trigger the actual download
+  const handleDownload = (artifact: BuildArtifact) => {
+    if (artifact.download_url) {
+      window.open(artifact.download_url, '_blank');
+      toast.success(`Download iniciado: ${artifact.file_name}`);
+    } else {
+      toast.error("URL de download não disponível");
+    }
   };
 
   const handleDownloadAll = () => {
     toast.success("Baixando todos os instaladores...");
-    downloadOptions.forEach((option, index) => {
+    artifacts.forEach((artifact, index) => {
       setTimeout(() => {
-        toast.info(`Preparando: ${appName}.${option.type}`);
+        if (artifact.download_url) {
+          window.open(artifact.download_url, '_blank');
+        }
       }, index * 500);
     });
+  };
+
+  const getFileTypeLabel = (fileType: string): string => {
+    const labels: Record<string, string> = {
+      exe: "Instalador .exe",
+      bat: "Script .bat",
+      msi: "Instalador .msi",
+      dmg: "Instalador .dmg",
+      app: "Aplicativo .app",
+      deb: "Pacote .deb",
+      appimage: "AppImage",
+    };
+    return labels[fileType] || fileType.toUpperCase();
+  };
+
+  const getFileTypeDescription = (fileType: string): string => {
+    const isElectron = framework === "electron";
+    const descriptions: Record<string, string> = {
+      exe: isElectron ? "Instalador padrão Windows (Electron)" : "Instalador compacto Windows (Tauri)",
+      bat: "Script de inicialização rápida",
+      msi: "Instalador empresarial Windows",
+      dmg: isElectron ? "Imagem de disco macOS (Electron)" : "Imagem de disco compacta (Tauri)",
+      app: "Bundle de aplicativo macOS",
+      deb: "Para Ubuntu/Debian",
+      appimage: "Executável universal Linux",
+    };
+    return descriptions[fileType] || `Arquivo ${fileType}`;
   };
 
   return (
@@ -92,7 +140,7 @@ export const BuildStatusCard = ({
             <p className="text-sm text-primary font-medium">{appName}</p>
           </div>
 
-          {status !== "completed" && (
+          {status !== "completed" && status !== "failed" && (
             <div className="space-y-2 mb-6">
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>Progresso</span>
@@ -121,39 +169,49 @@ export const BuildStatusCard = ({
                   <Package className="w-3 h-3 inline mr-1" />
                   {framework === "electron" ? "Electron" : "Tauri"}
                 </span>
+                <span className="px-3 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+                  {os === "windows" ? "Windows" : os === "macos" ? "macOS" : "Linux"}
+                </span>
               </div>
 
-              {/* Download options */}
+              {/* Download options from real artifacts */}
               <div className="space-y-3">
-                {downloadOptions.map((option) => (
-                  <motion.div
-                    key={option.type}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center justify-between p-4 bg-secondary/30 rounded-xl border border-border hover:border-primary/30 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        <FileDown className="w-5 h-5 text-primary" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-foreground">{option.label}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {option.description} • {option.size}
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDownload(option)}
-                      className="gap-2"
+                {artifacts.length > 0 ? (
+                  artifacts.map((artifact) => (
+                    <motion.div
+                      key={artifact.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex items-center justify-between p-4 bg-secondary/30 rounded-xl border border-border hover:border-primary/30 transition-colors"
                     >
-                      <Download className="w-4 h-4" />
-                      Baixar
-                    </Button>
-                  </motion.div>
-                ))}
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                          <FileDown className="w-5 h-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">{getFileTypeLabel(artifact.file_type)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {getFileTypeDescription(artifact.file_type)} • {artifact.file_size}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDownload(artifact)}
+                        className="gap-2"
+                        disabled={!artifact.download_url}
+                      >
+                        <Download className="w-4 h-4" />
+                        Baixar
+                      </Button>
+                    </motion.div>
+                  ))
+                ) : (
+                  <p className="text-center text-muted-foreground">
+                    Carregando arquivos...
+                  </p>
+                )}
               </div>
 
               {/* Action buttons */}
@@ -162,6 +220,7 @@ export const BuildStatusCard = ({
                   variant="hero"
                   className="flex-1 gap-2"
                   onClick={handleDownloadAll}
+                  disabled={artifacts.length === 0}
                 >
                   <Download className="w-4 h-4" />
                   Baixar Todos
@@ -175,6 +234,19 @@ export const BuildStatusCard = ({
                   Criar Outro App
                 </Button>
               </div>
+            </div>
+          )}
+
+          {status === "failed" && (
+            <div className="text-center">
+              <Button
+                variant="outline"
+                onClick={onReset}
+                className="gap-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Tentar Novamente
+              </Button>
             </div>
           )}
         </motion.div>
