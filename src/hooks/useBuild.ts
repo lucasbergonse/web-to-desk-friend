@@ -91,8 +91,8 @@ export function useBuild(buildId: string | null) {
     appName: string
     sourceType: 'url' | 'github' | 'zip'
     sourceUrl?: string
-    framework: 'electron' | 'tauri'
-    targetOs: 'windows' | 'macos' | 'linux'
+    framework: 'electron' | 'tauri' | 'capacitor' | 'react-native'
+    targetOs: 'windows' | 'macos' | 'linux' | 'android' | 'ios'
   }): Promise<string | null> => {
     try {
       setStatus('queued')
@@ -117,10 +117,17 @@ export function useBuild(buildId: string | null) {
     }
   }
 
+  const reset = () => {
+    setBuild(null)
+    setArtifacts([])
+    setStatus('idle')
+  }
+
   return {
     build,
     artifacts,
     status,
-    startBuild
+    startBuild,
+    reset
   }
 }

@@ -16,7 +16,7 @@ import { useBuild } from "@/hooks/useBuild";
 
 export const ConversionForm = () => {
   const [buildId, setBuildId] = useState<string | null>(null);
-  const { artifacts, status: buildStatus, startBuild } = useBuild(buildId);
+  const { artifacts, status: buildStatus, startBuild, reset: resetBuild } = useBuild(buildId);
   const [config, setConfig] = useState<BuildConfig>({
     appName: "",
     sourceType: "url",
@@ -73,6 +73,7 @@ export const ConversionForm = () => {
 
   const handleReset = () => {
     setBuildId(null);
+    resetBuild();
     setConfig({
       appName: "",
       sourceType: "url",
@@ -175,17 +176,19 @@ export const ConversionForm = () => {
               onChange={(file) => updateConfig("iconFile", file)}
             />
 
-            {/* OS Selection */}
-            <OSSelector
-              value={config.selectedOS}
-              onChange={(value) => updateConfig("selectedOS", value)}
-            />
-
-            {/* Framework Selection */}
+            {/* Framework Selection - moved before OS */}
             <FrameworkSelector
               value={config.framework}
               onChange={(value) => updateConfig("framework", value)}
             />
+
+            {/* OS Selection */}
+            <OSSelector
+              value={config.selectedOS}
+              onChange={(value) => updateConfig("selectedOS", value)}
+              framework={config.framework}
+            />
+
 
             <Button
               type="submit"

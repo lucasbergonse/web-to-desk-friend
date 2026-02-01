@@ -9,8 +9,8 @@ interface BuildRequest {
   appName: string
   sourceType: 'url' | 'github' | 'zip'
   sourceUrl?: string
-  framework: 'electron' | 'tauri'
-  targetOs: 'windows' | 'macos' | 'linux'
+  framework: 'electron' | 'tauri' | 'capacitor' | 'react-native'
+  targetOs: 'windows' | 'macos' | 'linux' | 'android' | 'ios'
 }
 
 Deno.serve(async (req) => {
@@ -64,8 +64,8 @@ async function processBuild(
   supabase: SupabaseClient<any>,
   buildId: string,
   appName: string,
-  framework: 'electron' | 'tauri',
-  targetOs: 'windows' | 'macos' | 'linux'
+  framework: 'electron' | 'tauri' | 'capacitor' | 'react-native',
+  targetOs: 'windows' | 'macos' | 'linux' | 'android' | 'ios'
 ) {
   try {
     // Update to extracting
@@ -127,8 +127,9 @@ async function processBuild(
   }
 }
 
-function getArtifacts(framework: 'electron' | 'tauri', os: 'windows' | 'macos' | 'linux') {
+function getArtifacts(framework: 'electron' | 'tauri' | 'capacitor' | 'react-native', os: 'windows' | 'macos' | 'linux' | 'android' | 'ios') {
   const isElectron = framework === 'electron'
+  const isCapacitor = framework === 'capacitor'
   
   const artifacts: Record<string, { type: string; size: string }[]> = {
     windows: [
@@ -143,6 +144,13 @@ function getArtifacts(framework: 'electron' | 'tauri', os: 'windows' | 'macos' |
     linux: [
       { type: 'deb', size: isElectron ? '~80 MB' : '~7 MB' },
       { type: 'appimage', size: isElectron ? '~85 MB' : '~9 MB' },
+    ],
+    android: [
+      { type: 'apk', size: isCapacitor ? '~15 MB' : '~20 MB' },
+      { type: 'aab', size: isCapacitor ? '~12 MB' : '~18 MB' },
+    ],
+    ios: [
+      { type: 'ipa', size: isCapacitor ? '~20 MB' : '~25 MB' },
     ],
   }
 
