@@ -107,12 +107,16 @@ export const BuildStatusCard = ({
       app: "Aplicativo .app",
       deb: "Pacote .deb",
       appimage: "AppImage",
+      apk: "APK Android",
+      aab: "Android App Bundle",
+      ipa: "Arquivo .ipa",
     };
     return labels[fileType] || fileType.toUpperCase();
   };
 
   const getFileTypeDescription = (fileType: string): string => {
     const isElectron = framework === "electron";
+    const isCapacitor = framework === "capacitor";
     const descriptions: Record<string, string> = {
       exe: isElectron ? "Instalador padrão Windows (Electron)" : "Instalador compacto Windows (Tauri)",
       bat: "Script de inicialização rápida",
@@ -121,6 +125,9 @@ export const BuildStatusCard = ({
       app: "Bundle de aplicativo macOS",
       deb: "Para Ubuntu/Debian",
       appimage: "Executável universal Linux",
+      apk: isCapacitor ? "Instalador Android (Capacitor)" : "Instalador Android (React Native)",
+      aab: "Para publicação na Play Store",
+      ipa: isCapacitor ? "Aplicativo iOS (Capacitor)" : "Aplicativo iOS (React Native)",
     };
     return descriptions[fileType] || `Arquivo ${fileType}`;
   };
@@ -160,17 +167,21 @@ export const BuildStatusCard = ({
           {status === "completed" && (
             <div className="space-y-4">
               {/* Framework badge */}
-              <div className="flex justify-center gap-2 mb-4">
+              <div className="flex justify-center gap-2 mb-4 flex-wrap">
                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                   framework === "electron" 
                     ? "bg-blue-500/20 text-blue-400" 
-                    : "bg-orange-500/20 text-orange-400"
+                    : framework === "tauri"
+                    ? "bg-orange-500/20 text-orange-400"
+                    : framework === "capacitor"
+                    ? "bg-cyan-500/20 text-cyan-400"
+                    : "bg-purple-500/20 text-purple-400"
                 }`}>
                   <Package className="w-3 h-3 inline mr-1" />
-                  {framework === "electron" ? "Electron" : "Tauri"}
+                  {framework === "electron" ? "Electron" : framework === "tauri" ? "Tauri" : framework === "capacitor" ? "Capacitor" : "React Native"}
                 </span>
                 <span className="px-3 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">
-                  {os === "windows" ? "Windows" : os === "macos" ? "macOS" : "Linux"}
+                  {os === "windows" ? "Windows" : os === "macos" ? "macOS" : os === "linux" ? "Linux" : os === "android" ? "Android" : "iOS"}
                 </span>
               </div>
 
