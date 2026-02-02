@@ -11,6 +11,8 @@ export interface BuildConfig {
   selectedOS: OS;
   framework: Framework;
   iconFile: File | null;
+  githubRepo: string;
+  useRealBuild: boolean;
 }
 
 export interface DownloadOption {

@@ -19,6 +19,7 @@ interface BuildStatusCardProps {
   os: OS;
   onReset: () => void;
   artifacts?: BuildArtifact[];
+  isRealBuild?: boolean;
 }
 
 export const BuildStatusCard = ({
@@ -28,7 +29,18 @@ export const BuildStatusCard = ({
   os,
   onReset,
   artifacts = [],
+  isRealBuild = false,
 }: BuildStatusCardProps) => {
+  const getFrameworkName = () => {
+    switch (framework) {
+      case "electron": return "Electron";
+      case "tauri": return "Tauri";
+      case "capacitor": return "Capacitor";
+      case "react-native": return "React Native";
+      default: return framework;
+    }
+  };
+
   const statusConfig = {
     extracting: {
       title: "Extraindo código...",
@@ -39,16 +51,22 @@ export const BuildStatusCard = ({
     },
     queued: {
       title: "Na fila...",
-      description: "Seu build está aguardando para iniciar.",
+      description: isRealBuild 
+        ? "Aguardando GitHub Actions iniciar o workflow..." 
+        : "Seu build está aguardando para iniciar.",
       icon: Loader2,
       iconClass: "animate-spin text-primary",
       progress: 40,
     },
     building: {
-      title: `Gerando build ${framework === "electron" ? "Electron" : "Tauri"}...`,
-      description: framework === "electron"
-        ? "Empacotando com Chromium e Node.js..."
-        : "Compilando com Rust e WebView nativo...",
+      title: `Gerando build ${getFrameworkName()}...`,
+      description: isRealBuild
+        ? "Compilando via GitHub Actions. Isso pode levar alguns minutos..."
+        : framework === "electron"
+          ? "Empacotando com Chromium e Node.js..."
+          : framework === "tauri"
+            ? "Compilando com Rust e WebView nativo..."
+            : "Compilando aplicativo mobile...",
       icon: Loader2,
       iconClass: "animate-spin text-primary",
       progress: 70,
@@ -110,6 +128,7 @@ export const BuildStatusCard = ({
       apk: "APK Android",
       aab: "Android App Bundle",
       ipa: "Arquivo .ipa",
+      zip: "Arquivo ZIP",
     };
     return labels[fileType] || fileType.toUpperCase();
   };
@@ -128,8 +147,30 @@ export const BuildStatusCard = ({
       apk: isCapacitor ? "Instalador Android (Capacitor)" : "Instalador Android (React Native)",
       aab: "Para publicação na Play Store",
       ipa: isCapacitor ? "Aplicativo iOS (Capacitor)" : "Aplicativo iOS (React Native)",
+      zip: "Arquivo compactado com instaladores",
     };
     return descriptions[fileType] || `Arquivo ${fileType}`;
+  };
+
+  const getOsName = () => {
+    switch (os) {
+      case "windows": return "Windows";
+      case "macos": return "macOS";
+      case "linux": return "Linux";
+      case "android": return "Android";
+      case "ios": return "iOS";
+      default: return os;
+    }
+  };
+
+  const getFrameworkColorClass = () => {
+    switch (framework) {
+      case "electron": return "bg-blue-500/20 text-blue-400";
+      case "tauri": return "bg-orange-500/20 text-orange-400";
+      case "capacitor": return "bg-cyan-500/20 text-cyan-400";
+      case "react-native": return "bg-purple-500/20 text-purple-400";
+      default: return "bg-muted text-muted-foreground";
+    }
   };
 
   return (
@@ -166,38 +207,49 @@ export const BuildStatusCard = ({
 
           {status === "completed" && (
             <div className="space-y-4">
-              {/* Demo notice */}
-              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 mb-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <span className="text-amber-400 text-sm">⚠️</span>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-amber-400 mb-1">Modo Demonstração</p>
-                    <p className="text-xs text-muted-foreground">
-                      Este é um protótipo. Os arquivos gerados são simulações para demonstrar o fluxo. 
-                      Em produção, seriam gerados instaladores reais compilados com {framework === "electron" ? "Electron" : framework === "tauri" ? "Tauri" : framework === "capacitor" ? "Capacitor" : "React Native"}.
-                    </p>
+              {/* Demo notice - only show if not real build */}
+              {!isRealBuild && (
+                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 mb-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-amber-400 text-sm">⚠️</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-amber-400 mb-1">Modo Demonstração</p>
+                      <p className="text-xs text-muted-foreground">
+                        Este é um protótipo. Os arquivos gerados são simulações para demonstrar o fluxo. 
+                        Ative "Build Real com GitHub Actions" para gerar instaladores funcionais.
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
+
+              {/* Real build success notice */}
+              {isRealBuild && (
+                <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/30 mb-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-green-400 text-sm">✓</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-green-400 mb-1">Build Real Concluído</p>
+                      <p className="text-xs text-muted-foreground">
+                        Instaladores reais compilados com {getFrameworkName()} via GitHub Actions.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Framework badge */}
               <div className="flex justify-center gap-2 mb-4 flex-wrap">
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                  framework === "electron" 
-                    ? "bg-blue-500/20 text-blue-400" 
-                    : framework === "tauri"
-                    ? "bg-orange-500/20 text-orange-400"
-                    : framework === "capacitor"
-                    ? "bg-cyan-500/20 text-cyan-400"
-                    : "bg-purple-500/20 text-purple-400"
-                }`}>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getFrameworkColorClass()}`}>
                   <Package className="w-3 h-3 inline mr-1" />
-                  {framework === "electron" ? "Electron" : framework === "tauri" ? "Tauri" : framework === "capacitor" ? "Capacitor" : "React Native"}
+                  {getFrameworkName()}
                 </span>
                 <span className="px-3 py-1 rounded-full text-xs font-medium bg-muted text-muted-foreground">
-                  {os === "windows" ? "Windows" : os === "macos" ? "macOS" : os === "linux" ? "Linux" : os === "android" ? "Android" : "iOS"}
+                  {getOsName()}
                 </span>
               </div>
 

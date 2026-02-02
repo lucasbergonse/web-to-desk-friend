@@ -1,0 +1,64 @@
+name: Build React Native iOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_name:
+        description: 'Application name'
+        required: true
+      source_url:
+        description: 'Source URL or GitHub repo'
+        required: true
+      build_id:
+        description: 'Build ID for callback'
+        required: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.inputs.source_url }}
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+        
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Install CocoaPods
+        working-directory: ios
+        run: pod install
+        
+      - name: Build IPA (unsigned)
+        run: |
+          xcodebuild -workspace ios/*.xcworkspace \
+            -scheme * \
+            -configuration Release \
+            -archivePath build/App.xcarchive \
+            archive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+            
+      - name: Create IPA
+        run: |
+          mkdir -p build/Payload
+          cp -r build/App.xcarchive/Products/Applications/*.app build/Payload/
+          cd build && zip -r App.ipa Payload
+          
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-installers
+          path: build/*.ipa
+          retention-days: 7
