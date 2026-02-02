@@ -166,6 +166,22 @@ export const BuildStatusCard = ({
 
           {status === "completed" && (
             <div className="space-y-4">
+              {/* Demo notice */}
+              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 mb-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-amber-400 text-sm">⚠️</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-amber-400 mb-1">Modo Demonstração</p>
+                    <p className="text-xs text-muted-foreground">
+                      Este é um protótipo. Os arquivos gerados são simulações para demonstrar o fluxo. 
+                      Em produção, seriam gerados instaladores reais compilados com {framework === "electron" ? "Electron" : framework === "tauri" ? "Tauri" : framework === "capacitor" ? "Capacitor" : "React Native"}.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               {/* Framework badge */}
               <div className="flex justify-center gap-2 mb-4 flex-wrap">
                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${
