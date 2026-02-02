@@ -12,6 +12,7 @@ import { OSSelector } from "./conversion/OSSelector";
 import { FrameworkSelector } from "./conversion/FrameworkSelector";
 import { IconUploader } from "./conversion/IconUploader";
 import { BuildStatusCard } from "./conversion/BuildStatusCard";
+import { GitHubRepoInput } from "./conversion/GitHubRepoInput";
 import { useBuild } from "@/hooks/useBuild";
 
 export const ConversionForm = () => {
@@ -25,6 +26,8 @@ export const ConversionForm = () => {
     selectedOS: "windows",
     framework: "electron",
     iconFile: null,
+    githubRepo: "",
+    useRealBuild: false,
   });
 
   const updateConfig = <K extends keyof BuildConfig>(key: K, value: BuildConfig[K]) => {
@@ -33,6 +36,9 @@ export const ConversionForm = () => {
 
   const isFormValid = () => {
     if (!config.appName.trim()) return false;
+    
+    // If using real build, must have GitHub repo
+    if (config.useRealBuild && !config.githubRepo.includes('/')) return false;
     
     switch (config.sourceType) {
       case "url":
@@ -60,12 +66,17 @@ export const ConversionForm = () => {
       sourceType: config.sourceType,
       sourceUrl: config.appUrl || undefined,
       framework: config.framework,
-      targetOs: config.selectedOS
+      targetOs: config.selectedOS,
+      githubRepo: config.useRealBuild ? config.githubRepo : undefined,
     });
 
     if (newBuildId) {
       setBuildId(newBuildId);
-      toast.success("Build iniciado! Aguarde enquanto geramos seus instaladores.");
+      toast.success(
+        config.useRealBuild 
+          ? "Build real iniciado! Acompanhe o progresso no GitHub Actions." 
+          : "Build demo iniciado! Aguarde enquanto geramos seus instaladores."
+      );
     } else {
       toast.error("Erro ao iniciar o build. Tente novamente.");
     }
@@ -82,6 +93,8 @@ export const ConversionForm = () => {
       selectedOS: "windows",
       framework: "electron",
       iconFile: null,
+      githubRepo: "",
+      useRealBuild: false,
     });
   };
 
@@ -94,6 +107,7 @@ export const ConversionForm = () => {
         os={config.selectedOS}
         onReset={handleReset}
         artifacts={artifacts}
+        isRealBuild={config.useRealBuild}
       />
     );
   }
@@ -187,6 +201,14 @@ export const ConversionForm = () => {
               value={config.selectedOS}
               onChange={(value) => updateConfig("selectedOS", value)}
               framework={config.framework}
+            />
+
+            {/* GitHub Real Build Option */}
+            <GitHubRepoInput
+              value={config.githubRepo}
+              onChange={(value) => updateConfig("githubRepo", value)}
+              useRealBuild={config.useRealBuild}
+              onUseRealBuildChange={(value) => updateConfig("useRealBuild", value)}
             />
 
 

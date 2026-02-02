@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/integrations/supabase/client'
 import { BuildStatus } from '@/components/conversion/types'
 
@@ -19,15 +19,55 @@ interface Build {
   error_message: string | null
 }
 
+interface BuildConfig {
+  appName: string
+  sourceType: 'url' | 'github' | 'zip'
+  sourceUrl?: string
+  framework: 'electron' | 'tauri' | 'capacitor' | 'react-native'
+  targetOs: 'windows' | 'macos' | 'linux' | 'android' | 'ios'
+  githubRepo?: string
+}
+
 export function useBuild(buildId: string | null) {
   const [build, setBuild] = useState<Build | null>(null)
   const [artifacts, setArtifacts] = useState<BuildArtifact[]>([])
   const [status, setStatus] = useState<BuildStatus>('idle')
+  const [githubRepo, setGithubRepo] = useState<string | null>(null)
+
+  const fetchArtifacts = useCallback(async () => {
+    if (!buildId) return
+    const { data, error } = await supabase
+      .from('build_artifacts')
+      .select('*')
+      .eq('build_id', buildId)
+
+    if (data && !error) {
+      setArtifacts(data)
+    }
+  }, [buildId])
+
+  const checkGitHubStatus = useCallback(async () => {
+    if (!buildId || !githubRepo) return
+    
+    try {
+      const response = await supabase.functions.invoke('check-build-status', {
+        body: { buildId, githubRepo }
+      })
+
+      if (response.data) {
+        setStatus(response.data.status as BuildStatus)
+        if (response.data.artifacts?.length > 0) {
+          setArtifacts(response.data.artifacts)
+        }
+      }
+    } catch (error) {
+      console.error('Error checking build status:', error)
+    }
+  }, [buildId, githubRepo])
 
   useEffect(() => {
     if (!buildId) return
 
-    // Fetch initial build status
     const fetchBuild = async () => {
       const { data, error } = await supabase
         .from('builds')
@@ -42,18 +82,6 @@ export function useBuild(buildId: string | null) {
         if (data.status === 'completed') {
           fetchArtifacts()
         }
-      }
-    }
-
-    // Fetch artifacts when build is completed
-    const fetchArtifacts = async () => {
-      const { data, error } = await supabase
-        .from('build_artifacts')
-        .select('*')
-        .eq('build_id', buildId)
-
-      if (data && !error) {
-        setArtifacts(data)
       }
     }
 
@@ -82,21 +110,42 @@ export function useBuild(buildId: string | null) {
       )
       .subscribe()
 
+    // Poll GitHub status if we have a repo (for real builds)
+    let pollInterval: NodeJS.Timeout | null = null
+    if (githubRepo && status !== 'completed' && status !== 'failed' && status !== 'idle') {
+      pollInterval = setInterval(checkGitHubStatus, 10000) // Poll every 10 seconds
+    }
+
     return () => {
       supabase.removeChannel(channel)
+      if (pollInterval) clearInterval(pollInterval)
     }
-  }, [buildId])
+  }, [buildId, githubRepo, status, fetchArtifacts, checkGitHubStatus])
 
-  const startBuild = async (config: {
-    appName: string
-    sourceType: 'url' | 'github' | 'zip'
-    sourceUrl?: string
-    framework: 'electron' | 'tauri' | 'capacitor' | 'react-native'
-    targetOs: 'windows' | 'macos' | 'linux' | 'android' | 'ios'
-  }): Promise<string | null> => {
+  const startBuild = async (config: BuildConfig): Promise<string | null> => {
     try {
       setStatus('queued')
       
+      // If GitHub repo is provided, use the real build process
+      if (config.githubRepo) {
+        setGithubRepo(config.githubRepo)
+        
+        const response = await supabase.functions.invoke('trigger-github-build', {
+          body: {
+            appName: config.appName,
+            sourceType: config.sourceType,
+            sourceUrl: config.sourceUrl,
+            framework: config.framework,
+            targetOs: config.targetOs,
+            githubRepo: config.githubRepo
+          }
+        })
+
+        if (response.error) throw response.error
+        return response.data.buildId
+      }
+      
+      // Fallback to demo build process
       const response = await supabase.functions.invoke('process-build', {
         body: {
           appName: config.appName,
@@ -121,6 +170,7 @@ export function useBuild(buildId: string | null) {
     setBuild(null)
     setArtifacts([])
     setStatus('idle')
+    setGithubRepo(null)
   }
 
   return {
