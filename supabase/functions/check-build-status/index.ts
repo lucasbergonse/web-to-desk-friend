@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { unzipSync } from 'https://esm.sh/fflate@0.8.2?target=deno'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -191,6 +192,14 @@ async function fetchAndStoreArtifacts(
 
   const artifactsData = await artifactsResponse.json()
 
+  // Avoid duplicating artifacts if status polling calls this multiple times
+  const { data: existingArtifacts } = await supabase
+    .from('build_artifacts')
+    .select('file_name')
+    .eq('build_id', buildId)
+
+  const existingNames = new Set<string>((existingArtifacts || []).map((a: { file_name: string }) => a.file_name))
+
   for (const artifact of artifactsData.artifacts || []) {
     const downloadResponse = await fetch(artifact.archive_download_url, {
       headers: {
@@ -205,45 +214,110 @@ async function fetchAndStoreArtifacts(
       continue
     }
 
-    const artifactBlob = await downloadResponse.blob()
-    const fileName = `${appName.replace(/\s+/g, '-').toLowerCase()}-${artifact.name}.zip`
-    const storagePath = `${buildId}/${fileName}`
+    const artifactBytes = new Uint8Array(await downloadResponse.arrayBuffer())
 
-    const { error: uploadError } = await supabase.storage
-      .from('installers')
-      .upload(storagePath, artifactBlob, {
-        contentType: 'application/zip'
-      })
-
-    if (uploadError) {
-      console.error('Upload error:', uploadError)
+    // GitHub artifacts are always ZIPs. We must unzip and store the real installers.
+    let files: Record<string, Uint8Array>
+    try {
+      files = unzipSync(artifactBytes)
+    } catch (e) {
+      console.error(`Failed to unzip artifact: ${artifact.name}`, e)
       continue
     }
 
-    const { data: urlData } = supabase.storage
-      .from('installers')
-      .getPublicUrl(storagePath)
+    for (const [zipPath, fileBytes] of Object.entries(files)) {
+      // Skip directories
+      if (!fileBytes || fileBytes.length === 0) continue
 
-    const fileType = getFileTypeFromArtifactName(artifact.name)
+      const baseName = zipPath.split('/').pop() || zipPath
+      const ext = getExt(baseName)
+      if (!ext) continue
 
-    await supabase.from('build_artifacts').insert({
-      build_id: buildId,
-      file_type: fileType,
-      file_name: fileName,
-      file_size: formatBytes(artifact.size_in_bytes),
-      storage_path: storagePath,
-      download_url: urlData.publicUrl
-    })
+      // Only keep the actual installer-like outputs (avoid logs, metadata, etc.)
+      if (!isInstallerExtension(ext)) continue
+
+      const safeApp = slugify(appName)
+      const fileName = `${safeApp}-${artifact.name}-${baseName}`
+      if (existingNames.has(fileName)) continue
+
+      const storagePath = `${buildId}/${fileName}`
+      const contentType = getContentTypeForExt(ext)
+
+      const arrayBuffer = fileBytes.buffer.slice(
+        fileBytes.byteOffset,
+        fileBytes.byteOffset + fileBytes.byteLength,
+      ) as ArrayBuffer
+
+      const { error: uploadError } = await supabase.storage
+        .from('installers')
+        .upload(storagePath, new Blob([arrayBuffer], { type: contentType }), {
+          contentType,
+          upsert: true,
+        })
+
+      if (uploadError) {
+        console.error('Upload error:', uploadError)
+        continue
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('installers')
+        .getPublicUrl(storagePath)
+
+      await supabase.from('build_artifacts').insert({
+        build_id: buildId,
+        file_type: ext,
+        file_name: fileName,
+        file_size: formatBytes(fileBytes.length),
+        storage_path: storagePath,
+        download_url: urlData.publicUrl,
+      })
+
+      existingNames.add(fileName)
+    }
   }
 }
 
-function getFileTypeFromArtifactName(name: string): string {
-  if (name.includes('windows')) return 'exe'
-  if (name.includes('macos') || name.includes('mac')) return 'dmg'
-  if (name.includes('linux')) return 'deb'
-  if (name.includes('android')) return 'apk'
-  if (name.includes('ios')) return 'ipa'
-  return 'zip'
+function slugify(s: string): string {
+  return (s || 'app')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
+function getExt(fileName: string): string {
+  const m = /\.([a-z0-9]+)$/i.exec(fileName)
+  return m ? m[1].toLowerCase() : ''
+}
+
+function isInstallerExtension(ext: string): boolean {
+  // Windows
+  if (['exe', 'msi', 'bat'].includes(ext)) return true
+  // macOS
+  if (['dmg', 'zip'].includes(ext)) return true
+  // Linux
+  if (['deb', 'rpm', 'appimage'].includes(ext)) return true
+  // Mobile
+  if (['apk', 'aab', 'ipa'].includes(ext)) return true
+  return false
+}
+
+function getContentTypeForExt(ext: string): string {
+  const map: Record<string, string> = {
+    exe: 'application/vnd.microsoft.portable-executable',
+    msi: 'application/x-msi',
+    bat: 'application/octet-stream',
+    dmg: 'application/x-apple-diskimage',
+    appimage: 'application/octet-stream',
+    deb: 'application/vnd.debian.binary-package',
+    rpm: 'application/x-rpm',
+    apk: 'application/vnd.android.package-archive',
+    aab: 'application/octet-stream',
+    ipa: 'application/octet-stream',
+    zip: 'application/zip',
+  }
+  return map[ext] || 'application/octet-stream'
 }
 
 function formatBytes(bytes: number): string {
