@@ -125,39 +125,26 @@ export function useBuild(buildId: string | null) {
   const startBuild = async (config: BuildConfig): Promise<string | null> => {
     try {
       setStatus('queued')
-      
-      // If GitHub repo is provided, use the real build process
-      if (config.githubRepo) {
-        setGithubRepo(config.githubRepo)
-        
-        const response = await supabase.functions.invoke('trigger-github-build', {
-          body: {
-            appName: config.appName,
-            sourceType: config.sourceType,
-            sourceUrl: config.sourceUrl,
-            framework: config.framework,
-            targetOs: config.targetOs,
-            githubRepo: config.githubRepo
-          }
-        })
 
-        if (response.error) throw response.error
-        return response.data.buildId
+      // Real builds only (GitHub Actions)
+      if (!config.githubRepo) {
+        throw new Error('GitHub repo obrigatório para build real')
       }
-      
-      // Fallback to demo build process
-      const response = await supabase.functions.invoke('process-build', {
+
+      setGithubRepo(config.githubRepo)
+
+      const response = await supabase.functions.invoke('trigger-github-build', {
         body: {
           appName: config.appName,
           sourceType: config.sourceType,
           sourceUrl: config.sourceUrl,
           framework: config.framework,
-          targetOs: config.targetOs
-        }
+          targetOs: config.targetOs,
+          githubRepo: config.githubRepo,
+        },
       })
 
       if (response.error) throw response.error
-
       return response.data.buildId
     } catch (error) {
       console.error('Error starting build:', error)
