@@ -25,6 +25,10 @@ interface Build {
   error_message: string | null
 }
 
+type GitHubRepoInfo = {
+  default_branch: string
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -63,6 +67,39 @@ Deno.serve(async (req) => {
     if (buildError || !build) throw buildError || new Error('Failed to create build')
 
     const workflowName = getWorkflowName(framework, targetOs)
+
+    // Resolve repo default branch (avoid assuming `main`)
+    const defaultBranch = await getDefaultBranch({
+      githubPat,
+      githubRepo,
+    })
+
+    // Validate workflow exists before attempting dispatch to provide a clearer error than GitHub's 404
+    const workflowExists = await checkWorkflowExists({
+      githubPat,
+      githubRepo,
+      workflowName,
+    })
+
+    if (!workflowExists) {
+      const msg = `Workflow não encontrado: .github/workflows/${workflowName}. Adicione o template correspondente ao seu repositório e tente novamente.`
+      await supabase
+        .from('builds')
+        .update({ status: 'failed', error_message: msg })
+        .eq('id', build.id)
+
+      return new Response(
+        JSON.stringify({
+          error: msg,
+          details: {
+            githubRepo,
+            workflowFile: workflowName,
+            expectedPath: `.github/workflows/${workflowName}`,
+          },
+        }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
     
     const triggerResponse = await fetch(
       `https://api.github.com/repos/${githubRepo}/actions/workflows/${workflowName}/dispatches`,
@@ -75,7 +112,7 @@ Deno.serve(async (req) => {
           'X-GitHub-Api-Version': '2022-11-28'
         },
         body: JSON.stringify({
-          ref: 'main',
+          ref: defaultBranch,
           inputs: {
             app_name: appName,
             source_url: sourceUrl || githubRepo,
@@ -94,7 +131,11 @@ Deno.serve(async (req) => {
         error_message: `Failed to trigger workflow: ${triggerResponse.status} - ${errorText}`
       }).eq('id', build.id)
       
-      throw new Error(`Failed to trigger GitHub workflow: ${triggerResponse.status}`)
+      // Common causes for 404 here: wrong workflow file name/path OR wrong ref branch.
+      const hint = triggerResponse.status === 404
+        ? ` (verifique se o workflow existe em .github/workflows/${workflowName} e se o branch '${defaultBranch}' existe)`
+        : ''
+      throw new Error(`Failed to trigger GitHub workflow: ${triggerResponse.status}${hint}`)
     }
 
     await supabase.from('builds').update({ 
@@ -118,6 +159,53 @@ Deno.serve(async (req) => {
     )
   }
 })
+
+async function githubFetch(
+  githubPat: string,
+  url: string,
+): Promise<Response> {
+  return await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${githubPat}`,
+      'Accept': 'application/vnd.github.v3+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+  })
+}
+
+async function getDefaultBranch(params: {
+  githubPat: string
+  githubRepo: string
+}): Promise<string> {
+  const { githubPat, githubRepo } = params
+  const res = await githubFetch(githubPat, `https://api.github.com/repos/${githubRepo}`)
+  if (!res.ok) {
+    // Fallback to main if we can't read repo metadata
+    console.warn('Failed to fetch repo info:', await res.text())
+    return 'main'
+  }
+  const data = (await res.json()) as GitHubRepoInfo
+  return data.default_branch || 'main'
+}
+
+async function checkWorkflowExists(params: {
+  githubPat: string
+  githubRepo: string
+  workflowName: string
+}): Promise<boolean> {
+  const { githubPat, githubRepo, workflowName } = params
+  const res = await githubFetch(
+    githubPat,
+    `https://api.github.com/repos/${githubRepo}/actions/workflows/${workflowName}`,
+  )
+  if (res.status === 404) return false
+  if (!res.ok) {
+    // If GitHub returns something else (403, 401), let the dispatch fail with proper error handling.
+    console.warn('Unexpected response checking workflow:', res.status, await res.text())
+    return true
+  }
+  return true
+}
 
 function getWorkflowName(framework: string, os: string): string {
   const workflowMap: Record<string, Record<string, string>> = {
