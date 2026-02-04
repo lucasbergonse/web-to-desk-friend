@@ -42,13 +42,11 @@ export const ConversionForm = () => {
   const isFormValid = () => {
     if (!config.appName.trim()) return false;
 
-    // Builds reais: por enquanto apenas repositório GitHub (owner/repo)
-    if (config.sourceType !== "github") return false;
-
+    // Builds reais exigem repositório GitHub (owner/repo)
     const repo = normalizeRepo(config.githubRepo || config.appUrl);
-    if (!repo.includes("/")) return false;
+    if (!repo || !repo.includes("/")) return false;
 
-    return config.appUrl.trim().length > 0;
+    return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
