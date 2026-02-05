@@ -59,6 +59,9 @@ export function useBuild(buildId: string | null) {
         if (response.data.artifacts?.length > 0) {
           setArtifacts(response.data.artifacts)
         }
+        if (response.data.error_message) {
+          setBuild(prev => prev ? { ...prev, error_message: response.data.error_message } : null)
+        }
       }
     } catch (error) {
       console.error('Error checking build status:', error)
@@ -165,6 +168,7 @@ export function useBuild(buildId: string | null) {
     artifacts,
     status,
     startBuild,
-    reset
+    reset,
+    errorMessage: build?.error_message || null
   }
 }

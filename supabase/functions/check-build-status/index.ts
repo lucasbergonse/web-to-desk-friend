@@ -34,6 +34,21 @@ interface GitHubRun {
   inputs?: { build_id?: string }
 }
 
+interface JobStep {
+  name: string
+  status: string
+  conclusion: string | null
+  number: number
+}
+
+interface Job {
+  id: number
+  name: string
+  status: string
+  conclusion: string | null
+  steps?: JobStep[]
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -121,9 +136,17 @@ Deno.serve(async (req) => {
         )
       } else {
         newStatus = 'failed'
+        
+        // Fetch detailed error from workflow jobs
+        const errorDetails = await fetchWorkflowErrorDetails(
+          githubPat,
+          githubRepo,
+          matchingRun.id
+        )
+        
         await supabase.from('builds').update({ 
           status: 'failed',
-          error_message: `Workflow failed: ${matchingRun.conclusion}`
+          error_message: errorDetails || `Workflow failed: ${matchingRun.conclusion}`
         }).eq('id', buildId)
       }
     } else if (matchingRun.status === 'in_progress') {
@@ -151,7 +174,8 @@ Deno.serve(async (req) => {
         status: newStatus, 
         artifacts,
         github_run_id: matchingRun.id,
-        github_run_url: matchingRun.html_url
+        github_run_url: matchingRun.html_url,
+        error_message: newStatus === 'failed' ? build.error_message : null
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
@@ -164,6 +188,50 @@ Deno.serve(async (req) => {
     )
   }
 })
+
+async function fetchWorkflowErrorDetails(
+  githubPat: string,
+  githubRepo: string,
+  runId: number
+): Promise<string | null> {
+  try {
+    // Fetch jobs for this workflow run
+    const jobsResponse = await fetch(
+      `https://api.github.com/repos/${githubRepo}/actions/runs/${runId}/jobs`,
+      {
+        headers: {
+          'Authorization': `Bearer ${githubPat}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'X-GitHub-Api-Version': '2022-11-28'
+        }
+      }
+    )
+
+    if (!jobsResponse.ok) {
+      console.error('Failed to fetch jobs:', await jobsResponse.text())
+      return null
+    }
+
+    const jobsData = await jobsResponse.json()
+    const jobs: Job[] = jobsData.jobs || []
+
+    // Find the failed job and step
+    for (const job of jobs) {
+      if (job.conclusion === 'failure' && job.steps) {
+        const failedStep = job.steps.find(step => step.conclusion === 'failure')
+        if (failedStep) {
+          return `Falha no job "${job.name}", etapa "${failedStep.name}". Verifique as configurações do repositório e tente novamente.`
+        }
+        return `Falha no job "${job.name}". Verifique os logs no GitHub Actions para mais detalhes.`
+      }
+    }
+
+    return null
+  } catch (error) {
+    console.error('Error fetching workflow details:', error)
+    return null
+  }
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function fetchAndStoreArtifacts(
