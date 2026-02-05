@@ -16,7 +16,7 @@ import { useBuild } from "@/hooks/useBuild";
 
 export const ConversionForm = () => {
   const [buildId, setBuildId] = useState<string | null>(null);
-  const { artifacts, status: buildStatus, startBuild, reset: resetBuild } = useBuild(buildId);
+  const { artifacts, status: buildStatus, startBuild, reset: resetBuild, errorMessage } = useBuild(buildId);
   const [config, setConfig] = useState<BuildConfig>({
     appName: "",
     sourceType: "url",
@@ -103,6 +103,7 @@ export const ConversionForm = () => {
         onReset={handleReset}
         artifacts={artifacts}
         isRealBuild={config.useRealBuild}
+        errorMessage={errorMessage}
       />
     );
   }

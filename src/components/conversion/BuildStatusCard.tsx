@@ -20,6 +20,7 @@ interface BuildStatusCardProps {
   onReset: () => void;
   artifacts?: BuildArtifact[];
   isRealBuild?: boolean;
+  errorMessage?: string | null;
 }
 
 export const BuildStatusCard = ({
@@ -30,6 +31,7 @@ export const BuildStatusCard = ({
   onReset,
   artifacts = [],
   isRealBuild = false,
+  errorMessage,
 }: BuildStatusCardProps) => {
   const getFrameworkName = () => {
     switch (framework) {
@@ -80,7 +82,7 @@ export const BuildStatusCard = ({
     },
     failed: {
       title: "Falha no build",
-      description: "Ocorreu um erro durante o processo de build.",
+      description: errorMessage || "Ocorreu um erro durante o processo de build.",
       icon: CheckCircle2,
       iconClass: "text-destructive",
       progress: 0,
@@ -317,7 +319,25 @@ export const BuildStatusCard = ({
           )}
 
           {status === "failed" && (
-            <div className="text-center">
+            <div className="space-y-4">
+              {/* Error details */}
+              {errorMessage && (
+                <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/30">
+                  <div className="flex items-start gap-3">
+                    <div className="w-6 h-6 rounded-full bg-destructive/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-destructive text-sm">!</span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-destructive mb-1">Detalhes do erro</p>
+                      <p className="text-xs text-muted-foreground">
+                        {errorMessage}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div className="text-center">
               <Button
                 variant="outline"
                 onClick={onReset}
@@ -326,6 +346,7 @@ export const BuildStatusCard = ({
                 <RotateCcw className="w-4 h-4" />
                 Tentar Novamente
               </Button>
+              </div>
             </div>
           )}
         </motion.div>
