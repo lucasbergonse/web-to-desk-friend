@@ -25,9 +25,7 @@ export const Footer = () => {
         </div>
 
         <div className="mt-8 pt-8 border-t border-border text-center">
-          <p className="text-muted-foreground text-xs">
-            © 2024 Web2Desktop. Todos os direitos reservados.
-          </p>
+          <p className="text-muted-foreground text-xs">© 2026 Web2Desktop. Todos os direitos reservados.</p>
         </div>
       </div>
     </footer>;
