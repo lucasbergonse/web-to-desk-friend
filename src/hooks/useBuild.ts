@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/integrations/supabase/client'
-import { BuildStatus } from '@/components/conversion/types'
+import { BuildStatus, WrapperMode } from '@/components/conversion/types'
 
 interface BuildArtifact {
   id: string
@@ -25,14 +25,13 @@ interface BuildConfig {
   sourceUrl?: string
   framework: 'electron' | 'tauri' | 'capacitor' | 'react-native'
   targetOs: 'windows' | 'macos' | 'linux' | 'android' | 'ios'
-  githubRepo?: string
+  wrapperMode: WrapperMode
 }
 
 export function useBuild(buildId: string | null) {
   const [build, setBuild] = useState<Build | null>(null)
   const [artifacts, setArtifacts] = useState<BuildArtifact[]>([])
   const [status, setStatus] = useState<BuildStatus>('idle')
-  const [githubRepo, setGithubRepo] = useState<string | null>(null)
 
   const fetchArtifacts = useCallback(async () => {
     if (!buildId) return
@@ -46,12 +45,12 @@ export function useBuild(buildId: string | null) {
     }
   }, [buildId])
 
-  const checkGitHubStatus = useCallback(async () => {
-    if (!buildId || !githubRepo) return
+  const checkBuildStatus = useCallback(async () => {
+    if (!buildId) return
     
     try {
       const response = await supabase.functions.invoke('check-build-status', {
-        body: { buildId, githubRepo }
+        body: { buildId }
       })
 
       if (response.data) {
@@ -66,7 +65,7 @@ export function useBuild(buildId: string | null) {
     } catch (error) {
       console.error('Error checking build status:', error)
     }
-  }, [buildId, githubRepo])
+  }, [buildId])
 
   useEffect(() => {
     if (!buildId) return
@@ -113,45 +112,49 @@ export function useBuild(buildId: string | null) {
       )
       .subscribe()
 
-    // Poll GitHub status if we have a repo (for real builds)
+    // Poll status while building
     let pollInterval: NodeJS.Timeout | null = null
-    if (githubRepo && status !== 'completed' && status !== 'failed' && status !== 'idle') {
-      pollInterval = setInterval(checkGitHubStatus, 10000) // Poll every 10 seconds
+    if (status !== 'completed' && status !== 'failed' && status !== 'idle') {
+      pollInterval = setInterval(checkBuildStatus, 15000) // Poll every 15 seconds
     }
 
     return () => {
       supabase.removeChannel(channel)
       if (pollInterval) clearInterval(pollInterval)
     }
-  }, [buildId, githubRepo, status, fetchArtifacts, checkGitHubStatus])
+  }, [buildId, status, fetchArtifacts, checkBuildStatus])
 
   const startBuild = async (config: BuildConfig): Promise<string | null> => {
     try {
-      setStatus('queued')
+      setStatus('preparing')
 
-      // Real builds only (GitHub Actions)
-      if (!config.githubRepo) {
-        throw new Error('GitHub repo obrigatório para build real')
-      }
-
-      setGithubRepo(config.githubRepo)
-
-      const response = await supabase.functions.invoke('trigger-github-build', {
+      const response = await supabase.functions.invoke('prepare-build', {
         body: {
           appName: config.appName,
           sourceType: config.sourceType,
           sourceUrl: config.sourceUrl,
           framework: config.framework,
           targetOs: config.targetOs,
-          githubRepo: config.githubRepo,
+          wrapperMode: config.wrapperMode,
         },
       })
 
-      if (response.error) throw response.error
+      if (response.error) {
+        console.error('Build error:', response.error)
+        setStatus('failed')
+        return null
+      }
+
+      if (response.data?.error) {
+        console.error('Build error:', response.data.error)
+        setStatus('failed')
+        return null
+      }
+
       return response.data.buildId
     } catch (error) {
       console.error('Error starting build:', error)
-      setStatus('idle')
+      setStatus('failed')
       return null
     }
   }
@@ -160,7 +163,6 @@ export function useBuild(buildId: string | null) {
     setBuild(null)
     setArtifacts([])
     setStatus('idle')
-    setGithubRepo(null)
   }
 
   return {

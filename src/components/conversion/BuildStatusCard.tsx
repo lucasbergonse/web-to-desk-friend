@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Loader2, CheckCircle2, Download, RotateCcw, FileDown, Package } from "lucide-react";
+import { Loader2, CheckCircle2, Download, RotateCcw, FileDown, Package, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { BuildStatus, Framework, OS } from "./types";
@@ -19,7 +19,6 @@ interface BuildStatusCardProps {
   os: OS;
   onReset: () => void;
   artifacts?: BuildArtifact[];
-  isRealBuild?: boolean;
   errorMessage?: string | null;
 }
 
@@ -30,7 +29,6 @@ export const BuildStatusCard = ({
   os,
   onReset,
   artifacts = [],
-  isRealBuild = false,
   errorMessage,
 }: BuildStatusCardProps) => {
   const getFrameworkName = () => {
@@ -44,34 +42,37 @@ export const BuildStatusCard = ({
   };
 
   const statusConfig = {
-    extracting: {
-      title: "Extraindo código...",
-      description: "Baixando e extraindo os arquivos do projeto.",
+    preparing: {
+      title: "Preparando projeto...",
+      description: "Configurando wrapper e dependências automaticamente.",
       icon: Loader2,
       iconClass: "animate-spin text-primary",
-      progress: 20,
+      progress: 10,
+    },
+    extracting: {
+      title: "Extraindo código...",
+      description: "Baixando e processando os arquivos do projeto.",
+      icon: Loader2,
+      iconClass: "animate-spin text-primary",
+      progress: 30,
     },
     queued: {
       title: "Na fila...",
-      description: isRealBuild 
-        ? "Aguardando GitHub Actions iniciar o workflow..." 
-        : "Seu build está aguardando para iniciar.",
+      description: "Aguardando iniciar a compilação...",
       icon: Loader2,
       iconClass: "animate-spin text-primary",
-      progress: 40,
+      progress: 50,
     },
     building: {
       title: `Gerando build ${getFrameworkName()}...`,
-      description: isRealBuild
-        ? "Compilando via GitHub Actions. Isso pode levar alguns minutos..."
-        : framework === "electron"
-          ? "Empacotando com Chromium e Node.js..."
-          : framework === "tauri"
-            ? "Compilando com Rust e WebView nativo..."
-            : "Compilando aplicativo mobile...",
+      description: framework === "electron"
+        ? "Empacotando com Chromium e Node.js..."
+        : framework === "tauri"
+          ? "Compilando com Rust e WebView nativo..."
+          : "Compilando aplicativo mobile...",
       icon: Loader2,
       iconClass: "animate-spin text-primary",
-      progress: 70,
+      progress: 75,
     },
     completed: {
       title: "Build concluído!",
@@ -83,7 +84,7 @@ export const BuildStatusCard = ({
     failed: {
       title: "Falha no build",
       description: errorMessage || "Ocorreu um erro durante o processo de build.",
-      icon: CheckCircle2,
+      icon: AlertCircle,
       iconClass: "text-destructive",
       progress: 0,
     },
@@ -121,7 +122,6 @@ export const BuildStatusCard = ({
   const getFileTypeLabel = (fileType: string): string => {
     const labels: Record<string, string> = {
       exe: "Instalador .exe",
-      bat: "Script .bat",
       msi: "Instalador .msi",
       dmg: "Instalador .dmg",
       app: "Aplicativo .app",
@@ -140,7 +140,6 @@ export const BuildStatusCard = ({
     const isCapacitor = framework === "capacitor";
     const descriptions: Record<string, string> = {
       exe: isElectron ? "Instalador padrão Windows (Electron)" : "Instalador compacto Windows (Tauri)",
-      bat: "Script de inicialização rápida",
       msi: "Instalador empresarial Windows",
       dmg: isElectron ? "Imagem de disco macOS (Electron)" : "Imagem de disco compacta (Tauri)",
       app: "Bundle de aplicativo macOS",
@@ -209,40 +208,20 @@ export const BuildStatusCard = ({
 
           {status === "completed" && (
             <div className="space-y-4">
-              {/* Demo notice - only show if not real build */}
-              {!isRealBuild && (
-                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 mb-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-amber-400 text-sm">⚠️</span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-amber-400 mb-1">Modo Demonstração</p>
-                      <p className="text-xs text-muted-foreground">
-                        Este é um protótipo. Os arquivos gerados são simulações para demonstrar o fluxo. 
-                        Ative "Build Real com GitHub Actions" para gerar instaladores funcionais.
-                      </p>
-                    </div>
+              {/* Success notice */}
+              <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/30 mb-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-green-400 text-sm">✓</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-green-400 mb-1">Build Concluído</p>
+                    <p className="text-xs text-muted-foreground">
+                      Instaladores compilados com {getFrameworkName()} para {getOsName()}.
+                    </p>
                   </div>
                 </div>
-              )}
-
-              {/* Real build success notice */}
-              {isRealBuild && (
-                <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/30 mb-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-green-400 text-sm">✓</span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-green-400 mb-1">Build Real Concluído</p>
-                      <p className="text-xs text-muted-foreground">
-                        Instaladores reais compilados com {getFrameworkName()} via GitHub Actions.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
+              </div>
 
               {/* Framework badge */}
               <div className="flex justify-center gap-2 mb-4 flex-wrap">
@@ -329,7 +308,7 @@ export const BuildStatusCard = ({
                     </div>
                     <div>
                       <p className="text-sm font-medium text-destructive mb-1">Detalhes do erro</p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground whitespace-pre-wrap">
                         {errorMessage}
                       </p>
                     </div>
@@ -338,14 +317,14 @@ export const BuildStatusCard = ({
               )}
               
               <div className="text-center">
-              <Button
-                variant="outline"
-                onClick={onReset}
-                className="gap-2"
-              >
-                <RotateCcw className="w-4 h-4" />
-                Tentar Novamente
-              </Button>
+                <Button
+                  variant="outline"
+                  onClick={onReset}
+                  className="gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Tentar Novamente
+                </Button>
               </div>
             </div>
           )}

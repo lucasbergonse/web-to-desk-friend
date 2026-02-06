@@ -1,7 +1,8 @@
 export type OS = "windows" | "macos" | "linux" | "android" | "ios";
 export type Framework = "electron" | "tauri" | "capacitor" | "react-native";
 export type SourceType = "url" | "github" | "zip";
-export type BuildStatus = "idle" | "extracting" | "queued" | "building" | "completed" | "failed";
+export type BuildStatus = "idle" | "preparing" | "extracting" | "queued" | "building" | "completed" | "failed";
+export type WrapperMode = "webview" | "pwa";
 
 export interface BuildConfig {
   appName: string;
@@ -11,8 +12,7 @@ export interface BuildConfig {
   selectedOS: OS;
   framework: Framework;
   iconFile: File | null;
-  githubRepo: string;
-  useRealBuild: boolean;
+  wrapperMode: WrapperMode;
 }
 
 export interface DownloadOption {
@@ -84,12 +84,6 @@ export const getDownloadOptions = (os: OS, framework: Framework): DownloadOption
           ? "Instalador padrão Windows (Electron)" 
           : "Instalador compacto Windows (Tauri)",
         size: isElectron ? "~85 MB" : "~8 MB",
-      },
-      {
-        type: "bat",
-        label: "Script .bat",
-        description: "Script de inicialização rápida",
-        size: "~1 KB",
       },
       {
         type: "msi",
