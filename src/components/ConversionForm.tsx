@@ -11,6 +11,7 @@ import { GitHubInput } from "./conversion/GitHubInput";
 import { OSSelector } from "./conversion/OSSelector";
 import { FrameworkSelector } from "./conversion/FrameworkSelector";
 import { IconUploader } from "./conversion/IconUploader";
+import { WrapperModeSelector } from "./conversion/WrapperModeSelector";
 import { BuildStatusCard } from "./conversion/BuildStatusCard";
 import { useBuild } from "@/hooks/useBuild";
 
@@ -25,26 +26,29 @@ export const ConversionForm = () => {
     selectedOS: "windows",
     framework: "electron",
     iconFile: null,
-    githubRepo: "",
-    useRealBuild: true,
+    wrapperMode: "webview",
   });
 
   const updateConfig = <K extends keyof BuildConfig>(key: K, value: BuildConfig[K]) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
   };
 
-  const normalizeRepo = (value: string) =>
+  const normalizeGithubUrl = (value: string) =>
     value
       .trim()
       .replace(/^https?:\/\/github\.com\//i, "")
-      .replace(/\.git$/i, "")
+      .replace(/\.git$/i, "");
 
   const isFormValid = () => {
     if (!config.appName.trim()) return false;
 
-    // Builds reais exigem repositório GitHub (owner/repo)
-    const repo = normalizeRepo(config.githubRepo || config.appUrl);
-    if (!repo || !repo.includes("/")) return false;
+    // URL or GitHub is required
+    if (config.sourceType === "url" || config.sourceType === "github") {
+      if (!config.appUrl.trim()) return false;
+    }
+
+    // ZIP requires file
+    if (config.sourceType === "zip" && !config.zipFile) return false;
 
     return true;
   };
@@ -57,21 +61,23 @@ export const ConversionForm = () => {
       return;
     }
 
-    // Builds reais apenas (GitHub Actions)
-    const repo = normalizeRepo(config.githubRepo || config.appUrl);
+    let sourceUrl = config.appUrl;
+    if (config.sourceType === "github") {
+      sourceUrl = normalizeGithubUrl(config.appUrl);
+    }
 
     const newBuildId = await startBuild({
       appName: config.appName,
       sourceType: config.sourceType,
-      sourceUrl: normalizeRepo(config.appUrl) || undefined,
+      sourceUrl: sourceUrl || undefined,
       framework: config.framework,
       targetOs: config.selectedOS,
-      githubRepo: repo,
+      wrapperMode: config.wrapperMode,
     });
 
     if (newBuildId) {
       setBuildId(newBuildId);
-      toast.success("Build real iniciado! Acompanhe o progresso no GitHub Actions.");
+      toast.success("Build iniciado! Aguarde enquanto processamos seu aplicativo.");
     } else {
       toast.error("Erro ao iniciar o build. Tente novamente.");
     }
@@ -88,8 +94,7 @@ export const ConversionForm = () => {
       selectedOS: "windows",
       framework: "electron",
       iconFile: null,
-      githubRepo: "",
-      useRealBuild: true,
+      wrapperMode: "webview",
     });
   };
 
@@ -102,7 +107,6 @@ export const ConversionForm = () => {
         os={config.selectedOS}
         onReset={handleReset}
         artifacts={artifacts}
-        isRealBuild={config.useRealBuild}
         errorMessage={errorMessage}
       />
     );
@@ -147,13 +151,6 @@ export const ConversionForm = () => {
               onChange={(value) => updateConfig("sourceType", value)}
             />
 
-            <div className="p-3 rounded-lg bg-secondary/30 border border-border">
-              <p className="text-xs text-muted-foreground">
-                Builds reais exigem um repositório GitHub com os workflows na pasta{' '}
-                <code className="bg-secondary/50 px-1 rounded">.github/workflows</code>. Arquivos demonstrativos foram desativados.
-              </p>
-            </div>
-
             {/* Conditional Source Input */}
             {config.sourceType === "url" && (
               <div className="space-y-2">
@@ -187,22 +184,13 @@ export const ConversionForm = () => {
               />
             )}
 
-            {/* Repo com workflows (sempre obrigatório) */}
-            <div className="space-y-2">
-              <Label htmlFor="githubRepo" className="text-foreground">
-                Repositório GitHub com Workflows *
-              </Label>
-              <Input
-                id="githubRepo"
-                placeholder="usuario/repositorio"
-                value={config.githubRepo}
-                onChange={(e) => updateConfig("githubRepo", e.target.value)}
-                className="bg-secondary/50 border-border focus:border-primary"
+            {/* Wrapper Mode - only show for URL source type */}
+            {config.sourceType === "url" && (
+              <WrapperModeSelector
+                value={config.wrapperMode}
+                onChange={(value) => updateConfig("wrapperMode", value)}
               />
-              <p className="text-xs text-muted-foreground">
-                Este repositório será usado para disparar o GitHub Actions e gerar os instaladores reais.
-              </p>
-            </div>
+            )}
 
             {/* Icon Upload */}
             <IconUploader
@@ -210,7 +198,7 @@ export const ConversionForm = () => {
               onChange={(file) => updateConfig("iconFile", file)}
             />
 
-            {/* Framework Selection - moved before OS */}
+            {/* Framework Selection */}
             <FrameworkSelector
               value={config.framework}
               onChange={(value) => updateConfig("framework", value)}
@@ -230,7 +218,7 @@ export const ConversionForm = () => {
               className="w-full"
               disabled={!isFormValid()}
             >
-              Gerar Instaladores
+              Gerar Instalador
             </Button>
           </form>
         </motion.div>
