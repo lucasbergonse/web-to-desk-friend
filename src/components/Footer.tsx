@@ -1,13 +1,11 @@
 import { Github, Twitter } from "lucide-react";
-
 export const Footer = () => {
-  return (
-    <footer className="py-12 border-t border-border">
+  return <footer className="py-12 border-t border-border">
       <div className="container px-4">
         <div className="flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-              <span className="font-bold text-primary-foreground">W2D</span>
+              <span className="font-bold text-primary-foreground">W2</span>
             </div>
             <span className="font-semibold text-lg">Web2Desktop</span>
           </div>
@@ -17,18 +15,10 @@ export const Footer = () => {
           </p>
 
           <div className="flex items-center gap-4">
-            <a
-              href="#"
-              className="text-muted-foreground hover:text-primary transition-colors"
-              aria-label="GitHub"
-            >
+            <a href="#" className="text-muted-foreground hover:text-primary transition-colors" aria-label="GitHub">
               <Github className="w-5 h-5" />
             </a>
-            <a
-              href="#"
-              className="text-muted-foreground hover:text-primary transition-colors"
-              aria-label="Twitter"
-            >
+            <a href="#" className="text-muted-foreground hover:text-primary transition-colors" aria-label="Twitter">
               <Twitter className="w-5 h-5" />
             </a>
           </div>
@@ -40,6 +30,5 @@ export const Footer = () => {
           </p>
         </div>
       </div>
-    </footer>
-  );
+    </footer>;
 };
