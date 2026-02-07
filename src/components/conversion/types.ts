@@ -2,6 +2,7 @@ export type OS = "windows" | "macos" | "linux" | "android" | "ios";
 export type Framework = "electron" | "tauri" | "capacitor" | "react-native";
 export type SourceType = "url" | "github" | "zip";
 export type BuildStatus = "idle" | "preparing" | "extracting" | "queued" | "building" | "completed" | "failed";
+export type GeneratorStatus = "idle" | "generating" | "ready" | "failed";
 export type WrapperMode = "webview" | "pwa";
 
 export interface BuildConfig {

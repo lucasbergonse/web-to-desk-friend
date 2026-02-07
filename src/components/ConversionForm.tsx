@@ -13,11 +13,10 @@ import { FrameworkSelector } from "./conversion/FrameworkSelector";
 import { IconUploader } from "./conversion/IconUploader";
 import { WrapperModeSelector } from "./conversion/WrapperModeSelector";
 import { BuildStatusCard } from "./conversion/BuildStatusCard";
-import { useBuild } from "@/hooks/useBuild";
+import { useProjectGenerator } from "@/hooks/useProjectGenerator";
 
 export const ConversionForm = () => {
-  const [buildId, setBuildId] = useState<string | null>(null);
-  const { artifacts, status: buildStatus, startBuild, reset: resetBuild, errorMessage } = useBuild(buildId);
+  const { status, result, errorMessage, generate, reset: resetGenerator } = useProjectGenerator();
   const [config, setConfig] = useState<BuildConfig>({
     appName: "",
     sourceType: "url",
@@ -41,15 +40,10 @@ export const ConversionForm = () => {
 
   const isFormValid = () => {
     if (!config.appName.trim()) return false;
-
-    // URL or GitHub is required
     if (config.sourceType === "url" || config.sourceType === "github") {
       if (!config.appUrl.trim()) return false;
     }
-
-    // ZIP requires file
     if (config.sourceType === "zip" && !config.zipFile) return false;
-
     return true;
   };
 
@@ -66,7 +60,7 @@ export const ConversionForm = () => {
       sourceUrl = normalizeGithubUrl(config.appUrl);
     }
 
-    const newBuildId = await startBuild({
+    const success = await generate({
       appName: config.appName,
       sourceType: config.sourceType,
       sourceUrl: sourceUrl || undefined,
@@ -75,17 +69,15 @@ export const ConversionForm = () => {
       wrapperMode: config.wrapperMode,
     });
 
-    if (newBuildId) {
-      setBuildId(newBuildId);
-      toast.success("Build iniciado! Aguarde enquanto processamos seu aplicativo.");
+    if (success) {
+      toast.success("Projeto gerado com sucesso! Baixe o .zip abaixo.");
     } else {
-      toast.error("Erro ao iniciar o build. Tente novamente.");
+      toast.error("Erro ao gerar o projeto. Tente novamente.");
     }
   };
 
   const handleReset = () => {
-    setBuildId(null);
-    resetBuild();
+    resetGenerator();
     setConfig({
       appName: "",
       sourceType: "url",
@@ -98,15 +90,16 @@ export const ConversionForm = () => {
     });
   };
 
-  if (buildStatus !== "idle") {
+  if (status !== "idle") {
     return (
       <BuildStatusCard
-        status={buildStatus}
+        status={status}
         appName={config.appName}
         framework={config.framework}
         os={config.selectedOS}
         onReset={handleReset}
-        artifacts={artifacts}
+        downloadUrl={result?.downloadUrl}
+        fileName={result?.fileName}
         errorMessage={errorMessage}
       />
     );
@@ -126,7 +119,7 @@ export const ConversionForm = () => {
               Crie seu <span className="gradient-text">app desktop</span>
             </h2>
             <p className="text-muted-foreground">
-              Preencha as informações abaixo e receba seu instalador em minutos.
+              Preencha as informações abaixo e receba seu projeto pronto para build.
             </p>
           </div>
 
@@ -218,7 +211,7 @@ export const ConversionForm = () => {
               className="w-full"
               disabled={!isFormValid()}
             >
-              Gerar Instalador
+              Gerar Projeto
             </Button>
           </form>
         </motion.div>
