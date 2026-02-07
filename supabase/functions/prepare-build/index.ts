@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { generateWorkflowContent } from './workflow-generator.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,7 +12,7 @@ interface PrepareRequest {
   sourceUrl?: string
   framework: 'electron' | 'tauri' | 'capacitor' | 'react-native'
   targetOs: 'windows' | 'macos' | 'linux' | 'android' | 'ios'
-  wrapperMode: 'webview' | 'pwa' // webview = online, pwa = offline
+  wrapperMode: 'webview' | 'pwa'
 }
 
 interface Build {
@@ -25,7 +26,6 @@ interface Build {
   error_message: string | null
 }
 
-// Template repo that contains all workflow files
 const TEMPLATE_REPO = 'nicholasbergonse/web2desk-builder'
 
 Deno.serve(async (req) => {
@@ -35,25 +35,16 @@ Deno.serve(async (req) => {
 
   try {
     const githubPat = Deno.env.get('GITHUB_PAT')
-    if (!githubPat) {
-      throw new Error('GITHUB_PAT not configured')
-    }
+    if (!githubPat) throw new Error('GITHUB_PAT not configured')
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const supabase = createClient(supabaseUrl, supabaseServiceKey) as any
 
     const { appName, sourceType, sourceUrl, framework, targetOs, wrapperMode }: PrepareRequest = await req.json()
 
-    // Validate inputs
-    if (!appName?.trim()) {
-      throw new Error('Nome do aplicativo é obrigatório')
-    }
-
-    if (!sourceUrl?.trim() && sourceType !== 'zip') {
-      throw new Error('URL ou repositório é obrigatório')
-    }
+    if (!appName?.trim()) throw new Error('Nome do aplicativo é obrigatório')
+    if (!sourceUrl?.trim() && sourceType !== 'zip') throw new Error('URL ou repositório é obrigatório')
 
     // Create build record
     const { data: build, error: buildError } = await supabase
@@ -71,37 +62,22 @@ Deno.serve(async (req) => {
 
     if (buildError || !build) throw buildError || new Error('Failed to create build')
 
-    // Generate wrapper project based on framework
-    const projectConfig = await generateProjectConfig({
-      appName,
-      sourceUrl: sourceUrl || '',
-      framework,
-      targetOs,
-      wrapperMode,
-    })
+    // Generate project config
+    const projectConfig = generateProjectConfig({ appName, sourceUrl: sourceUrl || '', framework, targetOs, wrapperMode })
 
-    // Trigger the build on template repo
     const workflowName = getWorkflowName(framework, targetOs)
-    
-    // Get default branch of template repo
     const defaultBranch = await getDefaultBranch(githubPat, TEMPLATE_REPO)
 
-    // Check if workflow exists
+    // Ensure workflow exists — create it if missing
     const workflowExists = await checkWorkflowExists(githubPat, TEMPLATE_REPO, workflowName)
     if (!workflowExists) {
-      const msg = `Workflow não encontrado no repositório template: ${workflowName}`
-      await supabase
-        .from('builds')
-        .update({ status: 'failed', error_message: msg })
-        .eq('id', build.id)
-
-      return new Response(
-        JSON.stringify({ error: msg }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      console.log(`Workflow ${workflowName} not found, creating it...`)
+      await createWorkflowFile(githubPat, TEMPLATE_REPO, workflowName, framework, targetOs, appName, defaultBranch)
+      // Wait a moment for GitHub to process the new file
+      await new Promise(resolve => setTimeout(resolve, 2000))
     }
 
-    // Trigger workflow with all necessary inputs
+    // Trigger workflow
     const triggerResponse = await fetch(
       `https://api.github.com/repos/${TEMPLATE_REPO}/actions/workflows/${workflowName}/dispatches`,
       {
@@ -120,7 +96,6 @@ Deno.serve(async (req) => {
             source_type: sourceType,
             build_id: build.id,
             wrapper_mode: wrapperMode,
-            // Pass the generated config as JSON
             project_config: JSON.stringify(projectConfig),
           }
         })
@@ -130,22 +105,18 @@ Deno.serve(async (req) => {
     if (!triggerResponse.ok) {
       const errorText = await triggerResponse.text()
       console.error('GitHub API error:', errorText)
-      
-      await supabase.from('builds').update({ 
+      await supabase.from('builds').update({
         status: 'failed',
         error_message: `Falha ao iniciar workflow: ${triggerResponse.status}`
       }).eq('id', build.id)
-      
       throw new Error(`Failed to trigger workflow: ${triggerResponse.status}`)
     }
 
-    await supabase.from('builds').update({ 
-      status: 'building'
-    }).eq('id', build.id)
+    await supabase.from('builds').update({ status: 'building' }).eq('id', build.id)
 
     return new Response(
-      JSON.stringify({ 
-        buildId: build.id, 
+      JSON.stringify({
+        buildId: build.id,
         status: 'building',
         message: 'Build iniciado com sucesso! O processamento pode levar alguns minutos.'
       }),
@@ -161,6 +132,8 @@ Deno.serve(async (req) => {
   }
 })
 
+// --- Helper Functions ---
+
 interface ProjectConfigParams {
   appName: string
   sourceUrl: string
@@ -169,140 +142,95 @@ interface ProjectConfigParams {
   wrapperMode: string
 }
 
-async function generateProjectConfig(params: ProjectConfigParams): Promise<object> {
+function generateProjectConfig(params: ProjectConfigParams): object {
   const { appName, sourceUrl, framework, wrapperMode } = params
-  
   const sanitizedName = appName.toLowerCase().replace(/[^a-z0-9]/g, '-')
-  
+
   if (framework === 'electron') {
     return {
-      name: sanitizedName,
-      productName: appName,
-      version: '1.0.0',
-      main: 'main.js',
-      scripts: {
-        start: 'electron .',
-        build: 'electron-builder'
-      },
-      build: {
-        appId: `com.web2desk.${sanitizedName}`,
-        productName: appName,
-        directories: {
-          output: 'dist'
-        }
-      },
-      // Configuration for the wrapper
-      wrapper: {
-        mode: wrapperMode,
-        url: sourceUrl,
-      }
+      name: sanitizedName, productName: appName, version: '1.0.0', main: 'main.js',
+      build: { appId: `com.web2desk.${sanitizedName}`, productName: appName },
+      wrapper: { mode: wrapperMode, url: sourceUrl }
     }
   }
-  
   if (framework === 'tauri') {
     return {
-      package: {
-        productName: appName,
-        version: '1.0.0'
-      },
+      package: { productName: appName, version: '1.0.0' },
       tauri: {
-        bundle: {
-          identifier: `com.web2desk.${sanitizedName}`,
-          active: true,
-          targets: 'all'
-        },
-        windows: [{
-          title: appName,
-          width: 1200,
-          height: 800,
-          resizable: true
-        }]
+        bundle: { identifier: `com.web2desk.${sanitizedName}`, active: true },
+        windows: [{ title: appName, width: 1200, height: 800, resizable: true }]
       },
-      wrapper: {
-        mode: wrapperMode,
-        url: sourceUrl,
-      }
+      wrapper: { mode: wrapperMode, url: sourceUrl }
     }
   }
-  
   if (framework === 'capacitor') {
     return {
-      appId: `com.web2desk.${sanitizedName}`,
-      appName: appName,
+      appId: `com.web2desk.${sanitizedName}`, appName,
       webDir: 'www',
-      server: wrapperMode === 'webview' ? {
-        url: sourceUrl,
-        cleartext: true
-      } : undefined,
-      wrapper: {
-        mode: wrapperMode,
-        url: sourceUrl,
-      }
+      server: wrapperMode === 'webview' ? { url: sourceUrl, cleartext: true } : undefined,
+      wrapper: { mode: wrapperMode, url: sourceUrl }
     }
   }
-  
-  // react-native
-  return {
-    name: sanitizedName,
-    displayName: appName,
-    wrapper: {
-      mode: wrapperMode,
-      url: sourceUrl,
-    }
-  }
+  return { name: sanitizedName, displayName: appName, wrapper: { mode: wrapperMode, url: sourceUrl } }
 }
 
 async function getDefaultBranch(githubPat: string, repo: string): Promise<string> {
   const res = await fetch(`https://api.github.com/repos/${repo}`, {
-    headers: {
-      'Authorization': `Bearer ${githubPat}`,
-      'Accept': 'application/vnd.github.v3+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
+    headers: { 'Authorization': `Bearer ${githubPat}`, 'Accept': 'application/vnd.github.v3+json', 'X-GitHub-Api-Version': '2022-11-28' },
   })
-  if (!res.ok) {
-    console.warn('Failed to fetch repo info:', await res.text())
-    return 'main'
-  }
+  if (!res.ok) { console.warn('Failed to fetch repo info:', await res.text()); return 'main' }
   const data = await res.json()
   return data.default_branch || 'main'
 }
 
 async function checkWorkflowExists(githubPat: string, repo: string, workflowName: string): Promise<boolean> {
   const res = await fetch(
-    `https://api.github.com/repos/${repo}/actions/workflows/${workflowName}`,
+    `https://api.github.com/repos/${repo}/contents/.github/workflows/${workflowName}`,
+    { headers: { 'Authorization': `Bearer ${githubPat}`, 'Accept': 'application/vnd.github.v3+json', 'X-GitHub-Api-Version': '2022-11-28' } }
+  )
+  return res.ok
+}
+
+async function createWorkflowFile(
+  githubPat: string, repo: string, workflowName: string,
+  framework: string, os: string, appName: string, branch: string
+): Promise<void> {
+  const content = generateWorkflowContent(framework, os, appName)
+  const encoded = btoa(unescape(encodeURIComponent(content)))
+
+  const res = await fetch(
+    `https://api.github.com/repos/${repo}/contents/.github/workflows/${workflowName}`,
     {
+      method: 'PUT',
       headers: {
         'Authorization': `Bearer ${githubPat}`,
         'Accept': 'application/vnd.github.v3+json',
-        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json',
+        'X-GitHub-Api-Version': '2022-11-28'
       },
+      body: JSON.stringify({
+        message: `Add ${workflowName} workflow`,
+        content: encoded,
+        branch,
+      })
     }
   )
-  return res.status !== 404
+
+  if (!res.ok) {
+    const errorText = await res.text()
+    console.error(`Failed to create workflow ${workflowName}:`, errorText)
+    throw new Error(`Falha ao criar workflow: ${res.status}`)
+  }
+
+  console.log(`Workflow ${workflowName} created successfully`)
 }
 
 function getWorkflowName(framework: string, os: string): string {
   const workflowMap: Record<string, Record<string, string>> = {
-    electron: {
-      windows: 'build-electron-windows.yml',
-      macos: 'build-electron-macos.yml',
-      linux: 'build-electron-linux.yml'
-    },
-    tauri: {
-      windows: 'build-tauri-windows.yml',
-      macos: 'build-tauri-macos.yml',
-      linux: 'build-tauri-linux.yml'
-    },
-    capacitor: {
-      android: 'build-capacitor-android.yml',
-      ios: 'build-capacitor-ios.yml'
-    },
-    'react-native': {
-      android: 'build-rn-android.yml',
-      ios: 'build-rn-ios.yml'
-    }
+    electron: { windows: 'build-electron-windows.yml', macos: 'build-electron-macos.yml', linux: 'build-electron-linux.yml' },
+    tauri: { windows: 'build-tauri-windows.yml', macos: 'build-tauri-macos.yml', linux: 'build-tauri-linux.yml' },
+    capacitor: { android: 'build-capacitor-android.yml', ios: 'build-capacitor-ios.yml' },
+    'react-native': { android: 'build-rn-android.yml', ios: 'build-rn-ios.yml' }
   }
-
   return workflowMap[framework]?.[os] || 'build.yml'
 }
