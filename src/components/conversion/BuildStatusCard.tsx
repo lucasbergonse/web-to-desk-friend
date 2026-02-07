@@ -1,24 +1,17 @@
 import { motion } from "framer-motion";
-import { Loader2, CheckCircle2, Download, RotateCcw, FileDown, Package, AlertCircle } from "lucide-react";
+import { Loader2, CheckCircle2, Download, RotateCcw, Package, AlertCircle, FileArchive } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { BuildStatus, Framework, OS } from "./types";
-
-interface BuildArtifact {
-  id: string;
-  file_type: string;
-  file_name: string;
-  file_size: string;
-  download_url: string | null;
-}
+import { Framework, OS, GeneratorStatus } from "./types";
 
 interface BuildStatusCardProps {
-  status: BuildStatus;
+  status: GeneratorStatus;
   appName: string;
   framework: Framework;
   os: OS;
   onReset: () => void;
-  artifacts?: BuildArtifact[];
+  downloadUrl?: string | null;
+  fileName?: string | null;
   errorMessage?: string | null;
 }
 
@@ -28,7 +21,8 @@ export const BuildStatusCard = ({
   framework,
   os,
   onReset,
-  artifacts = [],
+  downloadUrl,
+  fileName,
   errorMessage,
 }: BuildStatusCardProps) => {
   const getFrameworkName = () => {
@@ -39,118 +33,6 @@ export const BuildStatusCard = ({
       case "react-native": return "React Native";
       default: return framework;
     }
-  };
-
-  const statusConfig = {
-    preparing: {
-      title: "Preparando projeto...",
-      description: "Configurando wrapper e dependências automaticamente.",
-      icon: Loader2,
-      iconClass: "animate-spin text-primary",
-      progress: 10,
-    },
-    extracting: {
-      title: "Extraindo código...",
-      description: "Baixando e processando os arquivos do projeto.",
-      icon: Loader2,
-      iconClass: "animate-spin text-primary",
-      progress: 30,
-    },
-    queued: {
-      title: "Na fila...",
-      description: "Aguardando iniciar a compilação...",
-      icon: Loader2,
-      iconClass: "animate-spin text-primary",
-      progress: 50,
-    },
-    building: {
-      title: `Gerando build ${getFrameworkName()}...`,
-      description: framework === "electron"
-        ? "Empacotando com Chromium e Node.js..."
-        : framework === "tauri"
-          ? "Compilando com Rust e WebView nativo..."
-          : "Compilando aplicativo mobile...",
-      icon: Loader2,
-      iconClass: "animate-spin text-primary",
-      progress: 75,
-    },
-    completed: {
-      title: "Build concluído!",
-      description: "Seus instaladores estão prontos para download.",
-      icon: CheckCircle2,
-      iconClass: "text-green-500",
-      progress: 100,
-    },
-    failed: {
-      title: "Falha no build",
-      description: errorMessage || "Ocorreu um erro durante o processo de build.",
-      icon: AlertCircle,
-      iconClass: "text-destructive",
-      progress: 0,
-    },
-    idle: {
-      title: "",
-      description: "",
-      icon: Loader2,
-      iconClass: "",
-      progress: 0,
-    },
-  };
-
-  const config = statusConfig[status];
-
-  const handleDownload = (artifact: BuildArtifact) => {
-    if (artifact.download_url) {
-      window.open(artifact.download_url, '_blank');
-      toast.success(`Download iniciado: ${artifact.file_name}`);
-    } else {
-      toast.error("URL de download não disponível");
-    }
-  };
-
-  const handleDownloadAll = () => {
-    toast.success("Baixando todos os instaladores...");
-    artifacts.forEach((artifact, index) => {
-      setTimeout(() => {
-        if (artifact.download_url) {
-          window.open(artifact.download_url, '_blank');
-        }
-      }, index * 500);
-    });
-  };
-
-  const getFileTypeLabel = (fileType: string): string => {
-    const labels: Record<string, string> = {
-      exe: "Instalador .exe",
-      msi: "Instalador .msi",
-      dmg: "Instalador .dmg",
-      app: "Aplicativo .app",
-      deb: "Pacote .deb",
-      appimage: "AppImage",
-      apk: "APK Android",
-      aab: "Android App Bundle",
-      ipa: "Arquivo .ipa",
-      zip: "Arquivo ZIP",
-    };
-    return labels[fileType] || fileType.toUpperCase();
-  };
-
-  const getFileTypeDescription = (fileType: string): string => {
-    const isElectron = framework === "electron";
-    const isCapacitor = framework === "capacitor";
-    const descriptions: Record<string, string> = {
-      exe: isElectron ? "Instalador padrão Windows (Electron)" : "Instalador compacto Windows (Tauri)",
-      msi: "Instalador empresarial Windows",
-      dmg: isElectron ? "Imagem de disco macOS (Electron)" : "Imagem de disco compacta (Tauri)",
-      app: "Bundle de aplicativo macOS",
-      deb: "Para Ubuntu/Debian",
-      appimage: "Executável universal Linux",
-      apk: isCapacitor ? "Instalador Android (Capacitor)" : "Instalador Android (React Native)",
-      aab: "Para publicação na Play Store",
-      ipa: isCapacitor ? "Aplicativo iOS (Capacitor)" : "Aplicativo iOS (React Native)",
-      zip: "Arquivo compactado com instaladores",
-    };
-    return descriptions[fileType] || `Arquivo ${fileType}`;
   };
 
   const getOsName = () => {
@@ -174,6 +56,42 @@ export const BuildStatusCard = ({
     }
   };
 
+  const handleDownload = () => {
+    if (downloadUrl) {
+      window.open(downloadUrl, '_blank');
+      toast.success(`Download iniciado: ${fileName || 'projeto.zip'}`);
+    }
+  };
+
+  const statusConfig = {
+    idle: {
+      title: "",
+      description: "",
+      icon: Loader2,
+      iconClass: "",
+    },
+    generating: {
+      title: "Gerando projeto...",
+      description: `Preparando o projeto ${getFrameworkName()} para ${getOsName()}. Isso leva apenas alguns segundos.`,
+      icon: Loader2,
+      iconClass: "animate-spin text-primary",
+    },
+    ready: {
+      title: "Projeto pronto!",
+      description: "Seu projeto está pronto para download. Siga as instruções do README para gerar o instalador.",
+      icon: CheckCircle2,
+      iconClass: "text-green-500",
+    },
+    failed: {
+      title: "Falha na geração",
+      description: errorMessage || "Ocorreu um erro ao gerar o projeto.",
+      icon: AlertCircle,
+      iconClass: "text-destructive",
+    },
+  };
+
+  const config = statusConfig[status];
+
   return (
     <section className="py-24 relative">
       <div className="container px-4">
@@ -189,24 +107,20 @@ export const BuildStatusCard = ({
             <p className="text-sm text-primary font-medium">{appName}</p>
           </div>
 
-          {status !== "completed" && status !== "failed" && (
+          {status === "generating" && (
             <div className="space-y-2 mb-6">
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Progresso</span>
-                <span>{config.progress}%</span>
-              </div>
               <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
                 <motion.div
                   className="h-full bg-gradient-to-r from-primary to-accent"
                   initial={{ width: "0%" }}
-                  animate={{ width: `${config.progress}%` }}
-                  transition={{ duration: 0.5 }}
+                  animate={{ width: "80%" }}
+                  transition={{ duration: 3, ease: "easeOut" }}
                 />
               </div>
             </div>
           )}
 
-          {status === "completed" && (
+          {status === "ready" && (
             <div className="space-y-4">
               {/* Success notice */}
               <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/30 mb-4">
@@ -215,9 +129,10 @@ export const BuildStatusCard = ({
                     <span className="text-green-400 text-sm">✓</span>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-green-400 mb-1">Build Concluído</p>
+                    <p className="text-sm font-medium text-green-400 mb-1">Projeto Gerado</p>
                     <p className="text-xs text-muted-foreground">
-                      Instaladores compilados com {getFrameworkName()} para {getOsName()}.
+                      Projeto configurado com {getFrameworkName()} para {getOsName()}. 
+                      Baixe o .zip, execute <code className="bg-secondary px-1 rounded">npm install</code> e depois <code className="bg-secondary px-1 rounded">npm run build</code>.
                     </p>
                   </div>
                 </div>
@@ -234,56 +149,45 @@ export const BuildStatusCard = ({
                 </span>
               </div>
 
-              {/* Download options from real artifacts */}
-              <div className="space-y-3">
-                {artifacts.length > 0 ? (
-                  artifacts.map((artifact) => (
-                    <motion.div
-                      key={artifact.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="flex items-center justify-between p-4 bg-secondary/30 rounded-xl border border-border hover:border-primary/30 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                          <FileDown className="w-5 h-5 text-primary" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-foreground">{getFileTypeLabel(artifact.file_type)}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {getFileTypeDescription(artifact.file_type)} • {artifact.file_size}
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDownload(artifact)}
-                        className="gap-2"
-                        disabled={!artifact.download_url}
-                      >
-                        <Download className="w-4 h-4" />
-                        Baixar
-                      </Button>
-                    </motion.div>
-                  ))
-                ) : (
-                  <p className="text-center text-muted-foreground">
-                    Carregando arquivos...
-                  </p>
-                )}
-              </div>
+              {/* Download card */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center justify-between p-4 bg-secondary/30 rounded-xl border border-border hover:border-primary/30 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <FileArchive className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">{fileName || 'projeto.zip'}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Projeto {getFrameworkName()} pronto para build local
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownload}
+                  className="gap-2"
+                  disabled={!downloadUrl}
+                >
+                  <Download className="w-4 h-4" />
+                  Baixar
+                </Button>
+              </motion.div>
 
               {/* Action buttons */}
               <div className="flex flex-col sm:flex-row gap-3 pt-4">
                 <Button
                   variant="hero"
                   className="flex-1 gap-2"
-                  onClick={handleDownloadAll}
-                  disabled={artifacts.length === 0}
+                  onClick={handleDownload}
+                  disabled={!downloadUrl}
                 >
                   <Download className="w-4 h-4" />
-                  Baixar Todos
+                  Baixar Projeto
                 </Button>
                 <Button
                   variant="outline"
@@ -299,7 +203,6 @@ export const BuildStatusCard = ({
 
           {status === "failed" && (
             <div className="space-y-4">
-              {/* Error details */}
               {errorMessage && (
                 <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/30">
                   <div className="flex items-start gap-3">
